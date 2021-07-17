@@ -26,8 +26,10 @@ from homeassistant.components.climate.const import (
     SUPPORT_TARGET_TEMPERATURE,
     SUPPORT_FAN_MODE,
     SUPPORT_SWING_MODE,
+    SUPPORT_PRESET_MODE,
     ATTR_FAN_MODES,
     ATTR_SWING_MODES,
+    ATTR_PRESET_MODES,
     CURRENT_HVAC_OFF,
     CURRENT_HVAC_HEAT,
     CURRENT_HVAC_COOL,
@@ -51,7 +53,9 @@ from homeassistant.const import (
     CONF_NAME,
     PRECISION_WHOLE,
 )
-from .const import DOMAIN
+from .const import (
+    DOMAIN, HVAC_AUTO_SWING_OFF, HVAC_AUTO_SWING_VERT, HVAC_SWING_BOTH, HVAC_SWING_HORIZ, HVAC_SWING_OFF, HVAC_SWING_SPLIT, HVAC_SWING_VERT, HVAC_OP_FAN, HVAC_OP_AUTO, HVAC_OP_SWING, HVAC_OP_HORIZ, HVAC_OP_VERT
+)
 SUPPORT_FLAGS = 0
 
 async def async_setup_entry(hass, config_entry, async_add_devices):
@@ -64,7 +68,7 @@ async def async_setup_entry(hass, config_entry, async_add_devices):
 
 """Representation of an ECHONETLite climate device."""
 class EchonetClimate(ClimateEntity):
-    def __init__(self, name, instance, units: UnitSystem, fan_modes=None):
+    def __init__(self, name, instance, units: UnitSystem, fan_modes=None, swing_modes=None, preset_modes=None):
         """Initialize the climate device."""
         self._name = name
         self._instance = instance  # new line
@@ -76,14 +80,23 @@ class EchonetClimate(ClimateEntity):
         self._support_flags = self._support_flags | SUPPORT_TARGET_TEMPERATURE
         if ENL_FANSPEED in list(instance._api.propertyMaps[ENL_SETMAP].values()):
             self._support_flags = self._support_flags | SUPPORT_FAN_MODE
-        if ENL_AIR_HORZ in list(instance._api.propertyMaps[ENL_SETMAP].values()):
+        if ENL_AIR_VERT in list(instance._api.propertyMaps[ENL_SETMAP].values()):
             self._support_flags = self._support_flags | SUPPORT_SWING_MODE
+        if ENL_AIR_HORZ in list(instance._api.propertyMaps[ENL_SETMAP].values()):
+            self._support_flags = self._support_flags | SUPPORT_PRESET_MODE
         if fan_modes is not None:
             self._fan_modes = fan_modes
         else:
-            self._fan_modes = ['auto', 'minimum', 'low', 'medium-low', 'medium', 'medium-high', 'high', 'very-high', 'max']
+            self._fan_modes = ['minimum', 'low', 'medium-low', 'medium-high', 'high', 'auto']
         self._hvac_modes = ["heat", "cool", "dry", "fan_only", "heat_cool", "off"]
-        self._swing_modes = ['upper', 'upper-central','central', 'lower-central', 'lower']
+        if swing_modes is not None:
+            self._swing_modes = swing_modes
+        else:
+            self._swing_modes = ['swing', 'upper', 'upper-central', 'central', 'lower-central', 'lower', 'auto']
+        if preset_modes is not None:
+            self._preset_modes = preset_modes
+        else:
+            self._preset_modes = ['swing', 'left', 'lc', 'center', 'rc', 'right', 'left-right']
 
     async def async_update(self):
         """Get the latest state from the HVAC."""
@@ -203,23 +216,126 @@ class EchonetClimate(ClimateEntity):
     def swing_modes(self):
         """Return the list of available swing modes."""
         return self._swing_modes
-
+    
     @property
     def swing_mode(self):
         """Return the swing mode setting."""
+        # Code updated to reflect ability to set auto and swing modes
+        # check first to see if auto mode is engaged and if so return auto
+        if self._instance._update_data[ENL_AUTO_DIRECTION] == HVAC_AUTO_SWING_VERT:
+            return "auto"
+            # check next for swing mode
+        elif (self._instance._update_data[ENL_SWING_MODE] == HVAC_SWING_VERT or self._instance._update_data[ENL_SWING_MODE] == HVAC_SWING_BOTH):
+            return "swing"
         return self._instance._update_data[ENL_AIR_VERT] if ENL_AIR_VERT in self._instance._update_data else "unavailable"
-        
+
     async def async_set_swing_mode(self, swing_mode):
         """Set new swing mode."""
-        await self.hass.async_add_executor_job(self._instance._api.setAirflowVert, swing_mode)
-        self._instance._update_data[ENL_AIR_VERT] = swing_mode
+        # code updated to reflect ability to set auto and swing modes
+        # check if auto, swing or manual mode is specified and branch accordingly
+        if swing_mode == "auto":
+            # first we need to check for swing mode as we may need to stop it and/or move to only horizontal if required
+            if self._instance._update_data[ENL_SWING_MODE] == HVAC_SWING_VERT:
+                # single vertical swing mode activated - need to disable before setting auto swing mode
+                await self.hass.async_add_executor_job(self._instance._api.setSwingMode, HVAC_SWING_OFF)
+                self._instance._update_data[ENL_SWING_MODE] = HVAC_SWING_OFF
+            elif self._instance._update_data[ENL_SWING_MODE] == HVAC_SWING_BOTH:
+                # dual swing mode activated - need to switch to horiztonal only before setting auto swing mode
+                await self.hass.async_add_executor_job(self._instance._api.setSwingMode, HVAC_SWING_HORIZ)
+                self._instance._update_data[ENL_SWING_MODE] = HVAC_SWING_HORIZ
+            # switch to auto mode (we assume that no units can do auto horizontal mode)
+            await self.hass.async_add_executor_job(self._instance._api.setAutoDirection, HVAC_AUTO_SWING_VERT)
+            self._instance._update_data[ENL_AUTO_DIRECTION] = HVAC_AUTO_SWING_VERT
+        elif swing_mode == "swing":
+            # first we check for auto mode and disable if active (we assume no units can do auto horizontal mode)
+            if self._instance._update_data[ENL_AUTO_DIRECTION] == HVAC_AUTO_SWING_VERT:
+                await self.hass.async_add_executor_job(self._instance._api.setAutoDirection, HVAC_AUTO_SWING_OFF)
+                self._instance._update_data[ENL_AUTO_DIRECTION] = HVAC_AUTO_SWING_OFF
+            # then we check if current mode is already swinging for horizontal mode or not
+            if self._instance._update_data[ENL_SWING_MODE] == HVAC_SWING_HORIZ:
+                # set dual vertical/horizontal swing mode
+                await self.hass.async_add_executor_job(self._instance._api.setSwingMode, HVAC_SWING_BOTH)
+                self._instance._update_data[ENL_SWING_MODE] = HVAC_SWING_BOTH
+            else:
+                # set swing mode for vertical only
+                await self.hass.async_add_executor_job(self._instance._api.setSwingMode, HVAC_SWING_VERT)
+                self._instance._update_data[ENL_SWING_MODE] = HVAC_SWING_VERT
+        else:
+            # if we get to here we assume it's just a standard manual position setting for vertical vane
+            # but we still need to disable auto and swing modes if they were previously selected!
+            """ This is really ugly as it is duplicating some of the code above """
+            if self._instance._update_data[ENL_SWING_MODE] == HVAC_SWING_VERT:
+                # single vertical swing mode activated - need to disable
+                await self.hass.async_add_executor_job(self._instance._api.setSwingMode, HVAC_SWING_OFF)
+                self._instance._update_data[ENL_SWING_MODE] = HVAC_SWING_OFF
+            elif self._instance._update_data[ENL_SWING_MODE] == HVAC_SWING_BOTH:
+                # dual swing mode activated - need to switch to horiztonal only before setting auto swing mode
+                await self.hass.async_add_executor_job(self._instance._api.setSwingMode, HVAC_SWING_HORIZ)
+                self._instance._update_data[ENL_SWING_MODE] = HVAC_SWING_HORIZ
+            elif self._instance._update_data[ENL_AUTO_DIRECTION] == HVAC_AUTO_SWING_VERT:
+                # check for auto mode and disable if active (we assume no units can do auto horizontal mode)
+                await self.hass.async_add_executor_job(self._instance._api.setAutoDirection, HVAC_AUTO_SWING_OFF)
+                self._instance._update_data[ENL_AUTO_DIRECTION] = HVAC_AUTO_SWING_OFF
+            await self.hass.async_add_executor_job(self._instance._api.setAirflowVert, swing_mode)
+            self._instance._update_data[ENL_AIR_VERT] = swing_mode
+
+    """ Code to allow setting of horizontal swing using the presets function in the HA climate entity """
+    @property
+    def preset_mode(self):
+        """Return the horizt  mode setting."""
+        # check if mode is set to swing or split first and return different results if yes
+        # check first for swing mode
+        if (self._instance._update_data[ENL_SWING_MODE] == HVAC_SWING_HORIZ or self._instance._update_data[ENL_SWING_MODE] == HVAC_SWING_BOTH):
+            return "swing"
+        # check next for split mode
+        check = self._instance._update_data[ENL_AIR_HORZ] if ENL_AIR_HORZ in self._instance._update_data else "unavailable"
+        if check == HVAC_SWING_SPLIT:
+            return "split"
+        return check 
+
+    @property
+    def preset_modes(self):
+        """Return the list of available preset modes."""
+        return self._preset_modes
+
+    async def async_set_preset_mode(self, preset_mode):
+        """Set new preset mode."""
+        # first we check if swing mode was specified
+        if preset_mode == "swing":
+            # check if vertical mode already set to swing or not and proceed accordingly
+            if self._instance._update_data[ENL_SWING_MODE] == HVAC_SWING_VERT:
+                # vertical swing mode already set - switch to dual swing mode
+                await self.hass.async_add_executor_job(self._instance._api.setSwingMode, HVAC_SWING_BOTH)
+                self._instance._update_data[ENL_SWING_MODE] = HVAC_SWING_BOTH
+            else:
+                # set swing mode for horizontal only
+                await self.hass.async_add_executor_job(self._instance._api.setSwingMode, HVAC_SWING_HORIZ)
+                self._instance._update_data[ENL_SWING_MODE] = HVAC_SWING_HORIZ            
+        elif preset_mode == "split":
+            # next we check for split mode
+            await self.hass.async_add_executor_job(self._instance._api.setAirflowHoriz, HVAC_SWING_SPLIT)
+            self._instance._update_data[ENL_AIR_HORZ] = HVAC_SWING_SPLIT
+        else:
+            await self.hass.async_add_executor_job(self._instance._api.setAirflowHoriz, preset_mode)
+            self._instance._update_data[ENL_AIR_HORZ] = preset_mode
+
+
+
+
+
+
+
+
+
+
+
+
 
     async def async_set_temperature(self, **kwargs):
         """Set new target temperatures."""
         if kwargs.get(ATTR_TEMPERATURE) is not None:
             await self.hass.async_add_executor_job(self._instance._api.setOperationalTemperature, kwargs.get(ATTR_TEMPERATURE))
             self._instance._update_data[ENL_HVAC_SET_TEMP] =  kwargs.get(ATTR_TEMPERATURE)
-
 
     async def async_set_hvac_mode(self, hvac_mode):
         _LOGGER.warning(self._instance._update_data)
