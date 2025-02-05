@@ -1,10 +1,12 @@
 import logging
-
+# NEW
 from pychonet.HomeAirConditioner import (
     AIRFLOW_VERT,
+    AIRFLOW_HORIZ,
     ENL_STATUS,
     ENL_FANSPEED,
     ENL_AIR_VERT,
+    ENL_AIR_HORZ,
     ENL_AUTO_DIRECTION,
     ENL_SWING_MODE,
     ENL_HVAC_MODE,
@@ -36,7 +38,7 @@ from homeassistant.const import (
     UnitOfTemperature,
 )
 from . import get_device_name
-from .const import DATA_STATE_ON, DOMAIN, OPTION_HA_UI_SWING
+from .const import DATA_STATE_ON, DOMAIN, OPTION_HA_UI_SWING, OPTION_HA_UI_HORIZ_SWING
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -54,8 +56,10 @@ DEFAULT_HVAC_MODES = [
 DEFAULT_SWING_MODES = ["auto-vert"] + list(
     AIRFLOW_VERT.keys()
 )  # ["auto-vert","upper","upper-central","central","lower-central","lower"]
-DEFAULT_PRESET_MODES = list(SILENT_MODE.keys())  # ["normal", "high-speed", "silent"]
-
+DEFAULT_HORIZ_SWING_MODES = ["auto-horiz"] + list(
+    AIRFLOW_HORIZ.keys()
+)  # "rc-right","left-lc","lc-center-rc","left-lc-rc-right","right","rc","center","center-right","center-rc","center-rc-right","lc","lc-right","lc-rc","left","left-right","left-rc","left-rc-right","left-center","left-center-right","left-center-rc","left-center-rc-right","left-lc-right","left-lc-rc", = list(SILENT_MODE.keys())  # ["normal", "high-speed", "silent"]
+DEFAULT_PRESET_MODES = ['normal', 'high-speed', 'silent']
 SERVICE_SET_HUMIDIFER_DURING_HEATER = "set_humidifier_during_heater"
 ATTR_STATE = "state"
 ATTR_HUMIDITY = "humidity"
@@ -132,6 +136,12 @@ class EchonetClimate(ClimateEntity):
         ) or ENL_SWING_MODE in list(self._connector._setPropertyMap):
             self._attr_supported_features = (
                 self._attr_supported_features | ClimateEntityFeature.SWING_MODE
+            )
+        if ENL_AIR_HORZ in list(
+            self._connector._setPropertyMap
+        ) or ENL_SWING_MODE in list(self._connector._setPropertyMap):
+            self._attr_supported_features = (
+                self._attr_supported_features | ClimateEntityFeature.SWING_HORIZONTAL_MODE
             )
         if ENL_HVAC_SILENT_MODE in list(self._connector._setPropertyMap):
             self._attr_supported_features = (
@@ -300,6 +310,22 @@ class EchonetClimate(ClimateEntity):
                 if ENL_AIR_VERT in self._connector._update_data
                 else None
             )
+        # CARL CODE
+        """horizontal swing mode setting."""
+        if (
+            self._connector._update_data.get(ENL_AUTO_DIRECTION)
+            in self._attr_swing_horizontal_modes
+        ):
+            self._attr_swing_horizontal_mode = self._connector._update_data.get(ENL_AUTO_DIRECTION)
+        elif self._connector._update_data.get(ENL_SWING_MODE) in self._attr_swing_horizontal_modes:
+            self._attr_swing_horizontal_mode = self._connector._update_data.get(ENL_SWING_MODE)
+        else:
+            self._attr_swing_horizontal_mode = (
+                self._connector._update_data[ENL_AIR_HORZ]
+                if ENL_AIR_HORZ in self._connector._update_data
+                else None
+            )
+
 
         self._set_min_max_temp()
 
@@ -320,6 +346,16 @@ class EchonetClimate(ClimateEntity):
             await self._connector._instance.setSwingMode(swing_mode)
         else:
             await self._connector._instance.setAirflowVert(swing_mode)
+
+    # CARL CODE
+    async def async_set_swing_horizontal_mode(self, swing_mode):
+        """Set new swing mode."""
+        if swing_mode in self._opc_data[ENL_AUTO_DIRECTION]:
+            await self._connector._instance.setAutoDirection(swing_mode)
+        elif swing_mode in self._opc_data[ENL_SWING_MODE]:
+            await self._connector._instance.setSwingMode(swing_mode)
+        else:
+            await self._connector._instance.setAirflowHoriz(swing_mode)
 
     async def async_set_temperature(self, **kwargs):
         """Set new target temperatures."""
@@ -392,6 +428,15 @@ class EchonetClimate(ClimateEntity):
             self._attr_swing_modes = _modes
         else:
             self._attr_swing_modes = DEFAULT_SWING_MODES
+
+        """list of available horizontal swing modes."""
+        _modes = self._connector._user_options.get(OPTION_HA_UI_HORIZ_SWING)
+        if _modes and len(_modes):
+            self._attr_swing_horizontal_modes = _modes
+        elif _modes := self._connector._user_options.get(ENL_AIR_HORZ):
+            self._attr_swing_horizontal_modes = _modes
+        else:
+            self._attr_swing_horizontal_modes = DEFAULT_HORIZ_SWING_MODES
 
         self._set_min_max_temp()
         if self.hass:

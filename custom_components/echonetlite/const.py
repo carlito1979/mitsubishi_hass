@@ -1262,29 +1262,29 @@ FAN_SPEED_OPTIONS = {
 }
 
 AIRFLOW_HORIZ_OPTIONS = {
-    "rc-right": "Right Center + Right",
-    "left-lc": "Left + Left Center",
-    "lc-center-rc": "Left + Center + Right Center",
-    "left-lc-rc-right": "Left + Left Center + Right Center + Right",
+    "left": "Left",
+    "lc": "Left Center",
+    "center": "Center",
     "right": "Right",
     "rc": "Right Center",
-    "center": "Center",
-    "center-right": "Center + Right",
-    "center-rc": "Center + Right Center",
-    "center-rc-right": "Center + Right Center + Right",
-    "lc": "Left Center",
-    "lc-right": "Left Center + Right",
-    "lc-rc": "Left Center + Right Center",
-    "left": "Left",
-    "left-right": "Left + Right",
-    "left-rc": "Left + Right Center",
-    "left-rc-right": "Left + Right Center + Right",
-    "left-center": "Left + Center",
-    "left-center-right": "Left + Center + Right",
-    "left-center-rc": "Left + Center + Right Center",
-    "left-center-rc-right": "Left + Center + Right Center + Right",
-    "left-lc-right": "Left + Left Center + Right",
-    "left-lc-rc": "Left + Left Center + Right Center",
+    "left-right": "Split",
+    # "rc-right": "Right Center + Right",
+    # "left-lc": "Left + Left Center",
+    # "lc-center-rc": "Left + Center + Right Center",
+    # "left-lc-rc-right": "Left + Left Center + Right Center + Right",
+    # "center-right": "Center + Right",
+    # "center-rc": "Center + Right Center",
+    # "center-rc-right": "Center + Right Center + Right",
+    # "lc-right": "Left Center + Right",
+    # "lc-rc": "Left Center + Right Center",
+    # "left-rc": "Left + Right Center",
+    # "left-rc-right": "Left + Right Center + Right",
+    # "left-center": "Left + Center",
+    # "left-center-right": "Left + Center + Right",
+    # "left-center-rc": "Left + Center + Right Center",
+    # "left-center-rc-right": "Left + Center + Right Center + Right",
+    # "left-lc-right": "Left + Left Center + Right",
+    # "left-lc-rc": "Left + Left Center + Right Center",
 }
 
 AIRFLOW_VERT_OPTIONS = {
@@ -1318,6 +1318,8 @@ SILENT_MODE_OPTIONS = {
 HVAC_MODE_OPTIONS = {"as_off": "As Off", "as_idle": "As Idle"}
 
 OPTION_HA_UI_SWING = "ha_ui_swing"
+# CARL CODE
+OPTION_HA_UI_HORIZ_SWING = "ha_ui_horiz_swing"
 
 USER_OPTIONS = {
     ENL_FANSPEED: {"option": "fan_settings", "option_list": FAN_SPEED_OPTIONS},
@@ -1336,6 +1338,8 @@ USER_OPTIONS = {
         ],
     },
     OPTION_HA_UI_SWING: {"option": OPTION_HA_UI_SWING, "option_list": []},
+    # Carl CODE
+    OPTION_HA_UI_HORIZ_SWING: {"option": OPTION_HA_UI_HORIZ_SWING, "option_list": []},
 }
 
 TEMP_OPTIONS = {

@@ -33,6 +33,8 @@ from pychonet.HomeAirConditioner import (
     ENL_AIR_VERT,
     ENL_AUTO_DIRECTION,
     ENL_SWING_MODE,
+    # CARL CODE
+    ENL_AIR_HORZ,
 )
 
 from .const import (
@@ -43,6 +45,7 @@ from .const import (
     ENL_HVAC_MODE,
     CONF_OTHER_MODE,
     OPTION_HA_UI_SWING,
+    OPTION_HA_UI_HORIZ_SWING,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -445,6 +448,72 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                         {
                             vol.Optional(
                                 OPTION_HA_UI_SWING,
+                                default=option_default,
+                            ): cv.multi_select(option_list)
+                        }
+                    )
+                # CARL CODE
+                # HomeAirConditioner
+                ha_horizontal_swing_list = []
+                for option in list(USER_OPTIONS.keys()):
+                    if option in instance["setmap"]:
+                        if option in [ENL_AIR_HORZ, ENL_AUTO_DIRECTION, ENL_SWING_MODE]:
+                            ha_horizontal_swing_list.append(option)
+                        if (
+                            self._config_entry.options.get(
+                                USER_OPTIONS[option]["option"]
+                            )
+                            is not None
+                        ):
+                            option_default = self._config_entry.options.get(
+                                USER_OPTIONS[option]["option"]
+                            )
+                        else:
+                            if isinstance(USER_OPTIONS[option]["option_list"], list):
+                                # single select
+                                option_default = USER_OPTIONS[option]["option_list"][0][
+                                    "value"
+                                ]
+                            elif isinstance(USER_OPTIONS[option]["option_list"], dict):
+                                # multi selectable
+                                option_default = list(
+                                    USER_OPTIONS[option]["option_list"].keys()
+                                )
+                            else:
+                                option_default = []
+                        data_schema_structure.update(
+                            {
+                                vol.Optional(
+                                    USER_OPTIONS[option]["option"],
+                                    default=option_default,
+                                ): cv.multi_select(USER_OPTIONS[option]["option_list"])
+                            }
+                        )
+                # Handle setting Climate entity UI horizontal swing mode
+                if len(ha_horizontal_swing_list) > 0:
+                    option_list = {}
+                    for opt in ha_horizontal_swing_list:
+                        option_list.update(USER_OPTIONS[opt]["option_list"])
+                    if ENL_AIR_HORZ in instance["setmap"]:
+                        for del_key in [
+                            "auto",
+                            "non-auto",
+                            "auto-vert",
+                            "not-used",
+                            "vert",
+                            "vert-horiz",
+                        ]:
+                            option_list.pop(del_key, None)
+                    if self._config_entry.options.get(OPTION_HA_UI_HORIZ_SWING) is not None:
+                        option_default = self._config_entry.options.get(
+                            OPTION_HA_UI_HORIZ_SWING
+                        )
+                    else:
+                        option_default = list(option_list.keys())
+                    data_schema_structure.update(
+                        {
+                            vol.Optional(
+                                OPTION_HA_UI_HORIZ_SWING,
                                 default=option_default,
                             ): cv.multi_select(option_list)
                         }
